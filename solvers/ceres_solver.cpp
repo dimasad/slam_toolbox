@@ -14,11 +14,11 @@ namespace solver_plugins
 /*****************************************************************************/
 CeresSolver::CeresSolver()
 : nodes_(new std::unordered_map<int, Eigen::Vector3d>()),
-  blocks_(new std::unordered_map<std::size_t,
-    ceres::ResidualBlockId>()),
   problem_(NULL), was_constant_set_(false)
 /*****************************************************************************/
 {
+  for (size_t i=0; i<3; i++)
+    blocks_[i] = new std::unordered_map<std::size_t, ceres::ResidualBlockId>();
 }
 
 /*****************************************************************************/
@@ -245,13 +245,15 @@ void CeresSolver::Reset()
   if (nodes_) {
     delete nodes_;
   }
-
-  if (blocks_) {
-    delete blocks_;
-  }
+  
+  for (size_t i=0; i<3; i++)
+    if (blocks_[i]) {
+      delete blocks_[i];
+    }
 
   nodes_ = new std::unordered_map<int, Eigen::Vector3d>();
-  blocks_ = new std::unordered_map<std::size_t, ceres::ResidualBlockId>();
+  for (size_t i=0; i<3; i++)
+    blocks_[i] = new std::unordered_map<std::size_t, ceres::ResidualBlockId>();
   problem_ = new ceres::Problem(options_problem_);
   first_node_ = nodes_->end();
 
@@ -320,19 +322,25 @@ void CeresSolver::AddConstraint(karto::Edge<karto::LocalizedRangeScan> * pEdge)
   Eigen::Matrix3d sqrt_information = information.llt().matrixU();
 
   // populate residual and parameterization for heading normalization
-  ceres::CostFunction * cost_function = PoseGraph2dErrorTerm::Create(pose2d(0),
-      pose2d(1), pose2d(2), sqrt_information);
-  ceres::ResidualBlockId block = problem_->AddResidualBlock(
-    cost_function, loss_function_,
-    &node1it->second(0), &node1it->second(1), &node1it->second(2),
-    &node2it->second(0), &node2it->second(1), &node2it->second(2));
+  for (size_t i = 0; i < 3; i++)
+  {
+    ceres::CostFunction *cost_function = PerAxisErrorTerm::Create(
+        pose2d(0), pose2d(1), pose2d(2), sqrt_information, i);
+
+    ceres::ResidualBlockId block = problem_->AddResidualBlock(
+        cost_function, loss_function_,
+        &node1it->second(0), &node1it->second(1), &node1it->second(2),
+        &node2it->second(0), &node2it->second(1), &node2it->second(2));
+
+    blocks_[i]->insert(std::pair<std::size_t, ceres::ResidualBlockId>(
+      GetHash(node1, node2), block));
+  }
+
   problem_->SetParameterization(&node1it->second(2),
     angle_local_parameterization_);
   problem_->SetParameterization(&node2it->second(2),
     angle_local_parameterization_);
 
-  blocks_->insert(std::pair<std::size_t, ceres::ResidualBlockId>(
-      GetHash(node1, node2), block));
 }
 
 /*****************************************************************************/
@@ -354,20 +362,23 @@ void CeresSolver::RemoveConstraint(kt_int32s sourceId, kt_int32s targetId)
 /*****************************************************************************/
 {
   boost::mutex::scoped_lock lock(nodes_mutex_);
-  std::unordered_map<std::size_t, ceres::ResidualBlockId>::iterator it_a =
-    blocks_->find(GetHash(sourceId, targetId));
-  std::unordered_map<std::size_t, ceres::ResidualBlockId>::iterator it_b =
-    blocks_->find(GetHash(targetId, sourceId));
-  if (it_a != blocks_->end()) {
-    problem_->RemoveResidualBlock(it_a->second);
-    blocks_->erase(it_a);
-  } else if (it_b != blocks_->end()) {
-    problem_->RemoveResidualBlock(it_b->second);
-    blocks_->erase(it_b);
-  } else {
-    RCLCPP_ERROR(node_->get_logger(),
-      "RemoveConstraint: Failed to find residual block for %i %i",
-      (int)sourceId, (int)targetId);
+  for (size_t i=0; i<3; i++) 
+  {
+    std::unordered_map<std::size_t, ceres::ResidualBlockId>::iterator it_a =
+      blocks_[i]->find(GetHash(sourceId, targetId));
+    std::unordered_map<std::size_t, ceres::ResidualBlockId>::iterator it_b =
+      blocks_[i]->find(GetHash(targetId, sourceId));
+    if (it_a != blocks_[i]->end()) {
+      problem_->RemoveResidualBlock(it_a->second);
+      blocks_[i]->erase(it_a);
+    } else if (it_b != blocks_[i]->end()) {
+      problem_->RemoveResidualBlock(it_b->second);
+      blocks_[i]->erase(it_b);
+    } else {
+      RCLCPP_ERROR(node_->get_logger(),
+        "RemoveConstraint: Failed to find residual block for %i %i",
+        (int)sourceId, (int)targetId);
+    }
   }
 }
 

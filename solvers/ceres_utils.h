@@ -120,4 +120,43 @@ private:
   const Eigen::Matrix3d sqrt_information_;
 };
 
+class PerAxisErrorTerm
+    : public PoseGraph2dErrorTerm
+{
+public:
+  PerAxisErrorTerm(
+      double x_ab, double y_ab, double yaw_ab_radians,
+      const Eigen::Matrix3d &sqrt_information, size_t index)
+      : PoseGraph2dErrorTerm(x_ab, y_ab, yaw_ab_radians, sqrt_information),
+        index(index)
+  {
+    assert(index < 3);
+  }
+
+  template <typename T>
+  bool operator()(
+      const T *const x_a, const T *const y_a, const T *const yaw_a,
+      const T *const x_b, const T *const y_b, const T *const yaw_b,
+      T *residuals_ptr) const
+  {
+    T residuals[3];
+    bool status = PoseGraph2dErrorTerm::operator()(
+        x_a, y_a, yaw_a, x_b, y_b, yaw_b, residuals);
+    residuals_ptr[0] = residuals[index];
+    return status;
+  }
+
+  static ceres::CostFunction * Create(
+    double x_ab, double y_ab, double yaw_ab_radians,
+    const Eigen::Matrix3d & sqrt_information, size_t index)
+  {
+    return new ceres::AutoDiffCostFunction<PerAxisErrorTerm, 1, 1, 1, 1, 1, 1, 1>(
+      new PerAxisErrorTerm(
+        x_ab, y_ab, yaw_ab_radians, sqrt_information, index));
+  }
+
+private:
+  size_t index;
+};
+
 #endif  // SOLVERS__CERES_UTILS_H_
