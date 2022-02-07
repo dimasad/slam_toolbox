@@ -53,11 +53,11 @@ void CeresSolver::Configure(rclcpp::Node::SharedPtr node)
   if (loss_fn == "HuberLoss") {
     RCLCPP_INFO(node_->get_logger(),
       "CeresSolver: Using HuberLoss loss function.");
-    loss_function_ = new ceres::HuberLoss(0.7);
+    loss_function_ = new ceres::HuberLoss(2.0);
   } else if (loss_fn == "CauchyLoss") {
     RCLCPP_INFO(node_->get_logger(),
       "CeresSolver: Using CauchyLoss loss function.");
-    loss_function_ = new ceres::CauchyLoss(0.7);
+    loss_function_ = new ceres::CauchyLoss(2.0);
   }
 
   // choose linear solver default CHOL
@@ -115,9 +115,9 @@ void CeresSolver::Configure(rclcpp::Node::SharedPtr node)
   }
 
   // a typical ros map is 5cm, this is 0.001, 50x the resolution
-  options_.function_tolerance = 1e-3;
-  options_.gradient_tolerance = 1e-6;
-  options_.parameter_tolerance = 1e-3;
+  //options_.function_tolerance = 1e-3;
+  //options_.gradient_tolerance = 1e-6;
+  //options_.parameter_tolerance = 1e-3;
 
   options_.sparse_linear_algebra_library_type = ceres::SUITE_SPARSE;
   options_.max_num_consecutive_invalid_steps = 3;
@@ -127,7 +127,7 @@ void CeresSolver::Configure(rclcpp::Node::SharedPtr node)
   options_.use_nonmonotonic_steps = true;
   options_.jacobi_scaling = true;
 
-  options_.min_relative_decrease = 1e-3;
+  //options_.min_relative_decrease = 1e-3;
 
   options_.initial_trust_region_radius = 1e4;
   options_.max_trust_region_radius = 1e8;
